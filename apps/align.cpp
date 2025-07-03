@@ -12,7 +12,7 @@
 #include <pclomp/gicp_omp.h>
 
 // align point clouds and measure processing time
-pcl::PointCloud<pcl::PointXYZ>::Ptr align(pcl::Registration<pcl::PointXYZ, pcl::PointXYZ>::Ptr registration, const pcl::PointCloud<pcl::PointXYZ>::Ptr& target_cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr& source_cloud ) {
+pcl::PointCloud<pcl::PointXYZ>::Ptr align(pcl::Registration<pcl::PointXYZ, pcl::PointXYZ>::Ptr registration, const std::string& registration_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr& target_cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr& source_cloud) {
   registration->setInputTarget(target_cloud);
   registration->setInputSource(source_cloud);
   pcl::PointCloud<pcl::PointXYZ>::Ptr aligned(new pcl::PointCloud<pcl::PointXYZ>());
@@ -20,18 +20,30 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr align(pcl::Registration<pcl::PointXYZ, pcl::
   auto t1 = ros::WallTime::now();
   registration->align(*aligned);
   auto t2 = ros::WallTime::now();
-  std::cout << "single : " << (t2 - t1).toSec() * 1000 << "[msec]" << std::endl;
+  std::cout << "single: " << (t2 - t1).toSec() * 1000 << " [msec]" << std::endl;
 
-  for(int i=0; i<10; i++) {
+  for(int i = 0; i < 10; i++) {
     registration->align(*aligned);
   }
   auto t3 = ros::WallTime::now();
-  std::cout << "10times: " << (t3 - t2).toSec() * 1000 << "[msec]" << std::endl;
+  std::cout << "10 times: " << (t3 - t2).toSec() * 1000 << " [msec]" << std::endl;
   std::cout << "fitness: " << registration->getFitnessScore() << std::endl << std::endl;
+
+  if(pcl::io::savePCDFileASCII("/home/pcd/" + registration_name + "_source.pcd", *source_cloud)) {
+    std::cerr << "failed to save "
+              << "/home/pcd/" + registration_name + "_source.pcd" << std::endl;
+  }
+  if(pcl::io::savePCDFileASCII("/home/pcd/" + registration_name + "_target.pcd", *target_cloud)) {
+    std::cerr << "failed to save "
+              << "/home/pcd/" + registration_name + "_target.pcd" << std::endl;
+  }
+  if(pcl::io::savePCDFileASCII("/home/pcd/" + registration_name + "_aligned.pcd", *aligned)) {
+    std::cerr << "failed to save "
+              << "/home/pcd/" + registration_name + "_aligned.pcd" << std::endl;
+  }
 
   return aligned;
 }
-
 
 int main(int argc, char** argv) {
   if(argc != 3) {
@@ -73,24 +85,19 @@ int main(int argc, char** argv) {
   // benchmark
   std::cout << "--- pcl::GICP ---" << std::endl;
   pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>::Ptr gicp(new pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>());
-  pcl::PointCloud<pcl::PointXYZ>::Ptr aligned = align(gicp, target_cloud, source_cloud);
+  pcl::PointCloud<pcl::PointXYZ>::Ptr aligned = align(gicp, "pcl_gicp", target_cloud, source_cloud);
 
   std::cout << "--- pclomp::GICP ---" << std::endl;
   pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>::Ptr gicp_omp(new pclomp::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ>());
-  aligned = align(gicp_omp, target_cloud, source_cloud);
-
+  aligned = align(gicp_omp, "pclomp_gicp", target_cloud, source_cloud);
 
   std::cout << "--- pcl::NDT ---" << std::endl;
   pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>::Ptr ndt(new pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>());
   ndt->setResolution(1.0);
-  aligned = align(ndt, target_cloud, source_cloud);
+  aligned = align(ndt, "pcl_ndt", target_cloud, source_cloud);
 
   std::vector<int> num_threads = {1, omp_get_max_threads()};
-  std::vector<std::pair<std::string, pclomp::NeighborSearchMethod>> search_methods = {
-    {"KDTREE", pclomp::KDTREE},
-    {"DIRECT7", pclomp::DIRECT7},
-    {"DIRECT1", pclomp::DIRECT1}
-  };
+  std::vector<std::pair<std::string, pclomp::NeighborSearchMethod>> search_methods = {{"KDTREE", pclomp::KDTREE}, {"DIRECT7", pclomp::DIRECT7}, {"DIRECT1", pclomp::DIRECT1}};
 
   pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>::Ptr ndt_omp(new pclomp::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ>());
   ndt_omp->setResolution(1.0);
@@ -100,7 +107,7 @@ int main(int argc, char** argv) {
       std::cout << "--- pclomp::NDT (" << search_method.first << ", " << n << " threads) ---" << std::endl;
       ndt_omp->setNumThreads(n);
       ndt_omp->setNeighborhoodSearchMethod(search_method.second);
-      aligned = align(ndt_omp, target_cloud, source_cloud);
+      aligned = align(ndt_omp, "pclomp_ndt_" + search_method.first + "_" + std::to_string(n) + "_threads", target_cloud, source_cloud);
     }
   }
 
