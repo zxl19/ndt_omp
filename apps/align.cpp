@@ -11,6 +11,47 @@
 #include <pclomp/ndt_omp.h>
 #include <pclomp/gicp_omp.h>
 
+/**
+ * @brief 打印当前进程的内存占用信息
+ *
+ * @note 该函数依赖于Linux系统的/proc/self/status文件
+ * @note VmPeak: 进程虚拟内存使用峰值
+ * @note VmSize: 进程虚拟内存使用大小
+ * @note VmStk: 进程栈内存使用大小
+ * @note VmData: 进程数据段内存使用大小
+ * @note VmRSS: 进程常驻内存使用大小
+ * @note VmLib: 进程共享库内存使用大小
+ * @note VmPTE: 进程页表内存使用大小
+ */
+void PrintMemoryUsage() {
+  std::ifstream status_file("/proc/self/status");
+  if(!status_file.is_open()) {
+    std::cout << "Failed to open /proc/self/status";
+    return;
+  }
+
+  std::cout << std::string(30, '=') << std::endl;
+  std::cout << std::left << std::setw(15) << "Memory Type" << std::setw(15) << "Size (MB)" << std::endl;
+  std::cout << std::string(30, '-') << std::endl;
+
+  std::string line;
+  while(std::getline(status_file, line)) {
+    if(line.find("VmPeak") != std::string::npos || line.find("VmSize") != std::string::npos || line.find("VmStk") != std::string::npos || line.find("VmData") != std::string::npos || line.find("VmRSS") != std::string::npos || line.find("VmLib") != std::string::npos || line.find("VmPTE") != std::string::npos) {
+      std::size_t pos = line.find(":");
+      if(pos != std::string::npos) {
+        std::string type = line.substr(0, pos);
+        std::string size_str = line.substr(pos + 1);
+        std::size_t size = std::stoul(size_str);
+        double size_MB = size / 1024.0;  // Convert from KB to MB
+
+        std::cout << std::left << std::setw(15) << type << std::setw(15) << std::fixed << std::setprecision(2) << size_MB << std::endl;
+      }
+    }
+  }
+
+  status_file.close();
+}
+
 // align point clouds and measure processing time
 pcl::PointCloud<pcl::PointXYZ>::Ptr align(pcl::Registration<pcl::PointXYZ, pcl::PointXYZ>::Ptr registration, const std::string& registration_name, const pcl::PointCloud<pcl::PointXYZ>::Ptr& target_cloud, const pcl::PointCloud<pcl::PointXYZ>::Ptr& source_cloud) {
   registration->setInputTarget(target_cloud);
